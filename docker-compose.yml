@@ -1,0 +1,21 @@
+services:
+  autoregexbot:
+    build: .
+    container_name: telegram-autoregexbot
+    restart: unless-stopped
+    
+    # Mount config files from host to container
+    volumes:
+      - ./autoregexbot.cfg:/app/autoregexbot.cfg:ro
+      - ./secrets.cfg:/app/secrets.cfg:ro
+    
+    # Optional: Pass token via ENV instead of secrets.cfg
+    # environment:
+    #   - BOT_TOKEN=your_token_here
+    
+    # Logging configuration (optional, limits log size)
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

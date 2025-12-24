@@ -1,0 +1,20 @@
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+build/
+dist/
+*.egg-info/
+.git
+.gitignore
+.idea
+.vscode
+__init__.py
+
+# Do not bake configs into the image!
+secrets.cfg
+autoregexbot.cfg
