@@ -17,4 +17,3 @@ __init__.py
 
 # Do not bake configs into the image!
 secrets.cfg
-autoregexbot.cfg

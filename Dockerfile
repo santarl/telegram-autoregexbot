@@ -1,47 +1,15 @@
-# -----------------------------------------------------------------------------
-# Stage 1: Builder
-# -----------------------------------------------------------------------------
-FROM python:3.12-slim AS builder
+FROM debian:12-slim AS build
+RUN apt-get update && \
+    apt-get install --no-install-suggests --no-install-recommends --yes python3-venv && \
+    python3 -m venv /venv && \
+    /venv/bin/pip install --upgrade pip setuptools wheel
 
-WORKDIR /build
+FROM build AS build-venv
+RUN /venv/bin/pip install python-telegram-bot
 
-# Install build tools just in case (usually not needed for pure python, but good practice)
-RUN apt-get update && apt-get install -y --no-install-recommends gcc \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy project definition
-COPY pyproject.toml README.md ./
-COPY telegram_autoregexbot/ telegram_autoregexbot/
-
-# Install dependencies into a temporary location
-# We use --user to install to /root/.local, easy to copy later
-RUN pip install --user --no-cache-dir .
-
-# -----------------------------------------------------------------------------
-# Stage 2: Runtime
-# -----------------------------------------------------------------------------
-FROM python:3.12-slim AS runtime
-
-# Keep Python from buffering stdout/stderr (logs appear immediately)
-ENV PYTHONUNBUFFERED=1
-ENV PYTHONDONTWRITEBYTECODE=1
-
-# Create a non-root user for security
-RUN useradd -m -u 1000 botuser
-
+FROM gcr.io/distroless/python3-debian12
+COPY --from=build-venv /venv /venv
+COPY bot /app/bot
+COPY autoregexbot.cfg /app/autoregexbot.cfg
 WORKDIR /app
-
-# Copy installed packages from builder stage
-COPY --from=builder /root/.local /home/botuser/.local
-
-# Update PATH to include user installed bin
-ENV PATH=/home/botuser/.local/bin:$PATH
-
-# Copy source code (needed for the module execution)
-COPY telegram_autoregexbot/ telegram_autoregexbot/
-
-# Switch to non-root user
-USER botuser
-
-# Command to run the bot
-CMD ["python", "-m", "telegram_autoregexbot.autoregexbot"]
+ENTRYPOINT ["/venv/bin/python3", "-m", "bot.autoregex"]
