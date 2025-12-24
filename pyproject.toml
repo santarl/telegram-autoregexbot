@@ -10,3 +10,10 @@ dependencies = ["python-telegram-bot>=21.0"]
 
 [project.scripts]
 telegram-autoregexbot = "telegram_autoregexbot:main"
+
+[dependency-groups]
+dev = [
+    "nox>=2025.11.12",
+    "pyrefly>=0.46.1",
+    "ruff>=0.14.10",
+]
