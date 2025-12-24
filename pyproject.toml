@@ -1,0 +1,12 @@
+[project]
+name = "telegram-autoregexbot"
+version = "0.1.0"
+description = "telegram bot to automatically perform regex substitions. originally made to change x links to fxtwitter."
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{name = "santarl"}]
+dependencies = ["python-telegram-bot>=21.0"]
+
+[project.scripts]
+telegram-autoregexbot = "telegram_autoregexbot:main"
