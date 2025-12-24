@@ -8,6 +8,7 @@ import html
 import asyncio
 from datetime import datetime, timezone
 from typing import List, Tuple
+from telegram.request import HTTPXRequest
 
 # Third-party imports
 import httpx
@@ -323,15 +324,36 @@ def main():
     if not cfg.token:
         return
 
-    application = Application.builder().token(cfg.token).build()
+    # 1. Configure Request with stable timeouts and HTTP/1.1
+    # This forces the bot to use HTTP/1.1 (more stable on some networks) and waits 60s for connections
+    request = HTTPXRequest(
+        connection_pool_size=8,
+        connect_timeout=60,
+        read_timeout=60,
+        write_timeout=60,
+        http_version="1.1"  # Force HTTP/1.1 to avoid HTTP/2 stream errors
+    )
 
+    # 2. Build Application with the custom request
+    application = (
+        Application.builder()
+        .token(cfg.token)
+        .request(request)  # Pass the configured request object here
+        .build()
+    )
+
+    # 3. Add Handlers
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     application.add_handler(CallbackQueryHandler(handle_delete_callback, pattern="^del:"))
 
     print("Bot is running. Press Ctrl+C to stop.")
 
-    # Run
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
+    # 4. Run Polling
+    # bootstrap_retries=-1 means it will keep trying to connect forever at startup if internet is down
+    application.run_polling(
+        allowed_updates=Update.ALL_TYPES,
+        bootstrap_retries=-1
+    )
 
 if __name__ == "__main__":
     main()
