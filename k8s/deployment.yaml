@@ -1,0 +1,26 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: telegram-autoregexbot
+  labels:
+    app: telegram-autoregexbot
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: telegram-autoregexbot
+  template:
+    metadata:
+      labels:
+        app: telegram-autoregexbot
+    spec:
+      containers:
+        - name: bot
+          image: ghcr.io/santarl/telegram-autoregexbot:dd12547dbb3eef0e0e3acab256d70fe800933ada
+          env:
+            - name: BOT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: autoregex-telegram-bot-token
+                  key: TOKEN
+
