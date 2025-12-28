@@ -17,7 +17,7 @@ jobs:
   build-and-push:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       packages: write
 
     steps:
@@ -45,3 +45,13 @@ jobs:
             ghcr.io/santarl/telegram-autoregexbot:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha
+
+      - name: Update image tag
+        run: yq -i '.spec.template.spec.containers[0].image = "ghcr.io/santarl/telegram-autoregexbot:${{ github.sha }}"' k8s/deployment.yaml
+
+      - name: Commit to repo
+        uses: stefanzweifel/git-auto-commit-action@v7
+        with:
+          commit_author: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
+          commit_message: "k8s: Bump image to ${{ github.sha }} [no ci]"
+          file_pattern: "k8s/deployment.yaml"
