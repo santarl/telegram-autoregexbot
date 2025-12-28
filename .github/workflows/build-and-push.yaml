@@ -6,7 +6,8 @@ on:
       - main
     paths:
       - .github/workflows/build-and-push.yaml
-      - bot/**/*
+      - telegram-autoregexbot/**/*
+      - autoregexbot.cfg
       - Dockerfile
       - pyproject.toml
       - uv.lock
@@ -38,6 +39,7 @@ jobs:
         with:
           push: true
           platforms: linux/amd64,linux/arm64
+          build-args: VERSION=${{ github.sha }}
           tags: |
             ghcr.io/santarl/telegram-autoregexbot:latest
             ghcr.io/santarl/telegram-autoregexbot:${{ github.sha }}

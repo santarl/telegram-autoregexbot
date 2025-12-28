@@ -1,15 +1,33 @@
 FROM debian:12-slim AS build
-RUN apt-get update && \
-    apt-get install --no-install-suggests --no-install-recommends --yes python3-venv && \
-    python3 -m venv /venv && \
-    /venv/bin/pip install --upgrade pip setuptools wheel
 
-FROM build AS build-venv
-RUN /venv/bin/pip install python-telegram-bot
+# Install python
+RUN apt-get update && \
+    apt-get install --no-install-suggests --no-install-recommends --yes python3
+
+# Add uv
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
+# Install python dependencies
+ENV UV_COMPILE_BYTECODE=1 \
+    UV_PYTHON=python3.11 \
+    UV_PYTHON_DOWNLOADS=0 \
+    UV_NO_DEV=1
+
+COPY pyproject.toml uv.lock ./
+RUN uv sync --locked
+
 
 FROM gcr.io/distroless/python3-debian12
-COPY --from=build-venv /venv /venv
-COPY bot /app/bot
+
+# Copy venv and source code
+COPY --from=build /.venv /.venv
+COPY telegram-autoregexbot /app/telegram-autoregexbot
 COPY autoregexbot.cfg /app/autoregexbot.cfg
+
 WORKDIR /app
-ENTRYPOINT ["/venv/bin/python3", "-m", "bot.autoregex"]
+
+# Set VERSION as env
+ARG VERSION
+ENV VERSION=${VERSION}
+
+ENTRYPOINT ["/.venv/bin/python3", "-m", "telegram-autoregexbot.autoregex"]
