@@ -961,10 +961,32 @@ async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 callback_data="set:menu:reset_confirm",
             )
         ],
+        [
+            InlineKeyboardButton(
+                "🔄 Restart Bot",
+                callback_data="set:menu:restart_confirm",
+            )
+        ],
         [InlineKeyboardButton("Close", callback_data="set:close")],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text("<b>Bot Settings</b>", reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+
+
+async def restart_confirmation_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Shows a confirmation menu before restarting the container."""
+    query = update.callback_query
+    keyboard = [
+        [InlineKeyboardButton("🔄 YES, RESTART NOW", callback_data="set:action:restart_do")],
+        [InlineKeyboardButton("⬅️ Cancel", callback_data="set:menu:main")],
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    text = (
+        "<b>🔄 RESTART BOT</b>\n\n"
+        "This will terminate the current process. Docker will automatically restart the container.\n\n"
+        "The bot will be offline for a few seconds. Proceed?"
+    )
+    await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
 
 
 async def reset_confirmation_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1069,6 +1091,15 @@ async def handle_settings_callback(update: Update, context: ContextTypes.DEFAULT
     if data == "set:menu:reset_confirm":
         await reset_confirmation_menu(update, context)
         return
+    if data == "set:menu:restart_confirm":
+        await restart_confirmation_menu(update, context)
+        return
+    if data == "set:action:restart_do":
+        await query.edit_message_text("🔄 <b>Restarting...</b> The bot will be back online in a few seconds.", parse_mode=ParseMode.HTML)
+        logger.info(f"Restart initiated by user {update.effective_user.id}")
+        # Small delay to allow the message to be sent before shutdown
+        await asyncio.sleep(1)
+        sys.exit(0)
     if data == "set:action:reset_do":
         if cfg.reset_to_defaults():
             await query.edit_message_text("✅ <b>Configuration has been reset to defaults.</b>", parse_mode=ParseMode.HTML)
