@@ -60,6 +60,33 @@ class DatabaseManager:
                 )
                 """
             )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS state (
+                    key TEXT PRIMARY KEY,
+                    value TEXT
+                )
+                """
+            )
+            conn.commit()
+
+    def set_state(self, key, value):
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO state (key, value) VALUES (?, ?)",
+                (key, str(value)),
+            )
+            conn.commit()
+
+    def get_state(self, key):
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute("SELECT value FROM state WHERE key = ?", (key,))
+            row = cursor.fetchone()
+            return row[0] if row else None
+
+    def clear_state(self, key):
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute("DELETE FROM state WHERE key = ?", (key,))
             conn.commit()
 
     def add_reminder(self, chat_id, user_id, user_name, message_id, remind_time, reason, link):
@@ -1097,6 +1124,10 @@ async def handle_settings_callback(update: Update, context: ContextTypes.DEFAULT
     if data == "set:action:restart_do":
         await query.edit_message_text("🔄 <b>Restarting...</b> The bot will be back online in a few seconds.", parse_mode=ParseMode.HTML)
         logger.info(f"Restart initiated by user {update.effective_user.id}")
+        
+        # Save state for announcement after restart
+        db.set_state("restart_chat_id", update.effective_chat.id)
+        
         # Small delay to allow the message to be sent before shutdown
         await asyncio.sleep(1)
         sys.exit(0)
@@ -1207,6 +1238,20 @@ async def post_init(application: Application):
     
     if count > 0:
         logger.info(f"Recovered {count} reminders from database.")
+
+    # 3. Check for restart announcement
+    restart_chat_id = db.get_state("restart_chat_id")
+    if restart_chat_id:
+        try:
+            await application.bot.send_message(
+                chat_id=int(restart_chat_id),
+                text="✅ <b>Bot has restarted successfully!</b>",
+                parse_mode=ParseMode.HTML
+            )
+        except Exception as e:
+            logger.error(f"Failed to send restart announcement: {e}")
+        finally:
+            db.clear_state("restart_chat_id")
 
 
 async def send_reminder_from_recovery(bot, data):
