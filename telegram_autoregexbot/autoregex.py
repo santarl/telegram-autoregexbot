@@ -4,6 +4,7 @@ import html
 import logging
 import os
 import re
+import sqlite3
 import sys
 import time
 from datetime import datetime, timedelta, timezone
@@ -34,6 +35,80 @@ logger = logging.getLogger(__name__)
 
 # Silence httpx logs
 logging.getLogger("httpx").setLevel(logging.WARNING)
+
+# --- Database Management ---
+
+
+class DatabaseManager:
+    def __init__(self, db_path="reminders.db"):
+        self.db_path = db_path
+        self._init_db()
+
+    def _init_db(self):
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS reminders (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    chat_id INTEGER,
+                    user_id INTEGER,
+                    user_name TEXT,
+                    message_id INTEGER,
+                    remind_time TIMESTAMP,
+                    reason TEXT,
+                    link TEXT
+                )
+                """
+            )
+            conn.commit()
+
+    def add_reminder(self, chat_id, user_id, user_name, message_id, remind_time, reason, link):
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO reminders (chat_id, user_id, user_name, message_id, remind_time, reason, link)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (chat_id, user_id, user_name, message_id, remind_time.isoformat(), reason, link),
+            )
+            conn.commit()
+            return cursor.lastrowid
+
+    def delete_reminder(self, reminder_id):
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute("DELETE FROM reminders WHERE id = ?", (reminder_id,))
+            conn.commit()
+
+    def get_pending_reminders(self):
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM reminders")
+            return cursor.fetchall()
+
+    def get_user_reminders(self, chat_id, user_id):
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT * FROM reminders WHERE chat_id = ? AND user_id = ? ORDER BY remind_time ASC",
+                (chat_id, user_id),
+            )
+            return cursor.fetchall()
+
+    def get_chat_reminders(self, chat_id):
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT * FROM reminders WHERE chat_id = ? ORDER BY remind_time ASC",
+                (chat_id,),
+            )
+            return cursor.fetchall()
+
+
+db = DatabaseManager()
 
 # --- Configuration Management ---
 
@@ -595,6 +670,7 @@ async def schedule_reminder(
     """Background task to wait and send the reminder."""
     await asyncio.sleep(seconds)
 
+    reminder_id = job_data.get("reminder_id")
     chat_id = job_data["chat_id"]
     user_id = job_data["user_id"]
     message_id = job_data["message_id"]
@@ -616,6 +692,8 @@ async def schedule_reminder(
             reply_to_message_id=message_id,
             parse_mode=ParseMode.HTML,
         )
+        if reminder_id:
+            db.delete_reminder(reminder_id)
     except Exception as e:
         logger.error(f"Failed to send reminder: {e}")
 
@@ -626,6 +704,7 @@ async def remind_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     message = update.effective_message
+    user = update.effective_user
     args_str = " ".join(context.args)
 
     if not args_str:
@@ -654,21 +733,34 @@ async def remind_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     remind_time = datetime.now(timezone.utc) + timedelta(seconds=seconds)
 
-    # Prepare data for the task
-    job_data = {
-        "chat_id": update.effective_chat.id,
-        "user_id": update.effective_user.id,
-        "message_id": message.message_id,
-        "reason": reason,
-    }
-
+    # Prepare link
+    link = None
     if cfg.remind_include_link and message.reply_to_message:
         reply = message.reply_to_message
         if update.effective_chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
-            # Construct link for groups
             chat_id_str = str(update.effective_chat.id).replace("-100", "")
             link = f"https://t.me/c/{chat_id_str}/{reply.message_id}"
-            job_data["link"] = link
+
+    # Save to Database
+    reminder_id = db.add_reminder(
+        chat_id=update.effective_chat.id,
+        user_id=user.id,
+        user_name=user.first_name,
+        message_id=message.message_id,
+        remind_time=remind_time,
+        reason=reason,
+        link=link,
+    )
+
+    # Prepare data for the task
+    job_data = {
+        "reminder_id": reminder_id,
+        "chat_id": update.effective_chat.id,
+        "user_id": user.id,
+        "message_id": message.message_id,
+        "reason": reason,
+        "link": link,
+    }
 
     # Launch background task
     asyncio.create_task(schedule_reminder(context, seconds, job_data))
@@ -691,6 +783,51 @@ async def remind_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"T-minus: <code>{t_minus}</code>"
     )
     await message.reply_text(confirm_text, parse_mode=ParseMode.HTML)
+
+
+async def reminders_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Shows pending reminders for the user in the current chat."""
+    if not check_access(update):
+        return
+
+    chat_id = update.effective_chat.id
+    user_id = update.effective_user.id
+    
+    rows = db.get_user_reminders(chat_id, user_id)
+    if not rows:
+        await update.message.reply_text("You have no pending reminders in this chat.")
+        return
+
+    text = "<b>Your Pending Reminders:</b>\n\n"
+    for row in rows:
+        remind_time = datetime.fromisoformat(row["remind_time"]).astimezone(ZoneInfo("Asia/Kolkata"))
+        time_str = remind_time.strftime("%Y-%m-%d %H:%M:%S")
+        reason = f" ({row['reason']})" if row["reason"] else ""
+        text += f"• <code>{time_str}</code>{reason}\n"
+
+    await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+
+
+async def reminders_all_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Shows all pending reminders in the current chat."""
+    if not check_access(update):
+        return
+
+    chat_id = update.effective_chat.id
+    
+    rows = db.get_chat_reminders(chat_id)
+    if not rows:
+        await update.message.reply_text("There are no pending reminders in this chat.")
+        return
+
+    text = "<b>All Pending Reminders:</b>\n\n"
+    for row in rows:
+        remind_time = datetime.fromisoformat(row["remind_time"]).astimezone(ZoneInfo("Asia/Kolkata"))
+        time_str = remind_time.strftime("%Y-%m-%d %H:%M:%S")
+        reason = f" ({row['reason']})" if row["reason"] else ""
+        text += f"• {row['user_name']}: <code>{time_str}</code>{reason}\n"
+
+    await update.message.reply_text(text, parse_mode=ParseMode.HTML)
 
 
 async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -929,13 +1066,71 @@ async def handle_settings_callback(update: Update, context: ContextTypes.DEFAULT
 
 
 async def post_init(application: Application):
-    """Sets the bot commands for autocomplete."""
+    """Sets the bot commands for autocomplete and recovers pending reminders."""
+    # 1. Autocomplete Commands
     commands = [
         BotCommand("version", "Show bot version and commit hash"),
         BotCommand("remindme", "Set a reminder. Usage: /remindme 2h (reason)"),
+        BotCommand("reminders", "See your pending reminders in this chat"),
+        BotCommand("remindersall", "See all pending reminders in this chat"),
         BotCommand("settings", "Configure bot settings (Whitelisted only)"),
     ]
     await application.bot.set_my_commands(commands)
+
+    # 2. Recover Reminders from DB
+    pending = db.get_pending_reminders()
+    now = datetime.now(timezone.utc)
+    count = 0
+
+    for row in pending:
+        remind_time = datetime.fromisoformat(row["remind_time"])
+        if remind_time.tzinfo is None:
+            remind_time = remind_time.replace(tzinfo=timezone.utc)
+
+        seconds = (remind_time - now).total_seconds()
+        
+        job_data = {
+            "reminder_id": row["id"],
+            "chat_id": row["chat_id"],
+            "user_id": row["user_id"],
+            "message_id": row["message_id"],
+            "reason": row["reason"],
+            "link": row["link"],
+        }
+
+        if seconds <= 0:
+            # Overdue while bot was down, send immediately
+            asyncio.create_task(send_reminder_from_recovery(application.bot, job_data))
+        else:
+            # Re-schedule
+            context_stub = type('obj', (object,), {'bot': application.bot})
+            asyncio.create_task(schedule_reminder(context_stub, int(seconds), job_data))
+        
+        count += 1
+    
+    if count > 0:
+        logger.info(f"Recovered {count} reminders from database.")
+
+
+async def send_reminder_from_recovery(bot, data):
+    """Helper to send overdue reminders on startup."""
+    mention = f"<a href='tg://user?id={data['user_id']}'>Missed Reminder</a>"
+    text = f"🔔 {mention} (Was scheduled for earlier)"
+    if data["reason"]:
+        text += f": {data['reason']}"
+    if data.get("link"):
+        text += f"\n\n🔗 <a href='{data['link']}'>Original Message</a>"
+
+    try:
+        await bot.send_message(
+            chat_id=data["chat_id"],
+            text=text,
+            reply_to_message_id=data["message_id"],
+            parse_mode=ParseMode.HTML,
+        )
+        db.delete_reminder(data["reminder_id"])
+    except Exception as e:
+        logger.error(f"Failed to send recovered reminder: {e}")
 
 
 def main():
@@ -964,6 +1159,8 @@ def main():
     # 3. Add Handlers
     application.add_handler(CommandHandler("version", version_command))
     application.add_handler(CommandHandler("remindme", remind_command))
+    application.add_handler(CommandHandler("reminders", reminders_command))
+    application.add_handler(CommandHandler("remindersall", reminders_all_command))
     application.add_handler(CommandHandler("settings", settings_command))
     application.add_handler(
         MessageHandler((filters.TEXT | filters.Document.FileExtension("cfg")) & ~filters.COMMAND, handle_message)
