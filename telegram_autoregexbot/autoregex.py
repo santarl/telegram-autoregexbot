@@ -7,6 +7,7 @@ import re
 import sys
 import time
 from datetime import datetime, timezone
+from importlib import metadata
 from typing import List, Tuple
 
 # Third-party imports
@@ -17,6 +18,7 @@ from telegram.error import NetworkError, TimedOut
 from telegram.ext import (
     Application,
     CallbackQueryHandler,
+    CommandHandler,
     ContextTypes,
     MessageHandler,
     filters,
@@ -360,6 +362,25 @@ async def handle_delete_callback(update: Update, context: ContextTypes.DEFAULT_T
         await query.answer("⛔ You cannot delete this message.", show_alert=True)
 
 
+async def version_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handles the /version command."""
+    if not check_access(update):
+        return
+
+    try:
+        pkg_version = metadata.version("telegram-autoregexbot")
+    except metadata.PackageNotFoundError:
+        pkg_version = "Unknown"
+
+    commit_sha = os.environ.get("VERSION", "Unknown")
+
+    response = f"<b>Telegram AutoRegex Bot</b>\n"
+    response += f"Version: <code>{pkg_version}</code>\n"
+    response += f"Commit: <code>{commit_sha}</code>"
+
+    await update.message.reply_text(response, parse_mode=ParseMode.HTML)
+
+
 def main():
     if not cfg.token:
         return
@@ -383,6 +404,7 @@ def main():
     )
 
     # 3. Add Handlers
+    application.add_handler(CommandHandler("version", version_command))
     application.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)
     )
