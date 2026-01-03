@@ -8,7 +8,14 @@ services:
     volumes:
       - ./autoregexbot.cfg:/app/autoregexbot.cfg
       - ./secrets.cfg:/app/secrets.cfg
-      - ./reminders.db:/app/reminders.db
+      - bot-data:/app/data
+
+    # Change working dir or point DB to the volume path
+    environment:
+      - DB_PATH=/app/data/reminders.db
+
+volumes:
+  bot-data:
     
     # Optional: Pass token via ENV instead of secrets.cfg
     # environment:

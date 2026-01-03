@@ -40,7 +40,9 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 
 
 class DatabaseManager:
-    def __init__(self, db_path="reminders.db"):
+    def __init__(self, db_path=None):
+        if db_path is None:
+            db_path = os.environ.get("DB_PATH", "reminders.db")
         self.db_path = db_path
         self._init_db()
 
