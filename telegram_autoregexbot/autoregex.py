@@ -91,6 +91,9 @@ class ConfigManager:
             self.remind_include_link = self.config.getboolean(
                 "bot", "remind_include_link", fallback=True
             )
+            self.process_whole_message = self.config.getboolean(
+                "bot", "process_whole_message", fallback=False
+            )
 
             # Access Control
             self.access_policy = self.config.get(
@@ -246,18 +249,45 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # REGEX LOGIC
     text = message.text
-    new_text = text
     matched = False
+    response_text = ""
 
-    for pattern, replacement in cfg.rules:
-        if pattern.search(new_text):
-            try:
-                new_text = pattern.sub(replacement, new_text)
-                matched = True
-            except re.error as e:
-                logger.error(f"Regex error: {e}")
+    if cfg.process_whole_message:
+        # 1. Process whole message
+        new_text = text
+        for pattern, replacement in cfg.rules:
+            if pattern.search(new_text):
+                try:
+                    new_text = pattern.sub(replacement, new_text)
+                    matched = True
+                except re.error as e:
+                    logger.error(f"Regex error: {e}")
+        response_text = new_text
+    else:
+        # 2. Only process URLs and send them
+        # Extract things that look like URLs
+        urls = re.findall(r"https?://[^\s]+", text)
+        processed_urls = []
 
-    if not matched or new_text == text:
+        for url in urls:
+            new_url = url
+            url_matched = False
+            for pattern, replacement in cfg.rules:
+                if pattern.search(new_url):
+                    try:
+                        new_url = pattern.sub(replacement, new_url)
+                        url_matched = True
+                        matched = True
+                    except re.error as e:
+                        logger.error(f"Regex error on URL {url}: {e}")
+            
+            if url_matched:
+                processed_urls.append(new_url)
+        
+        if processed_urls:
+            response_text = "\n".join(processed_urls)
+
+    if not matched or response_text == text or not response_text:
         return
 
     processed_messages.add(message.message_id)
@@ -265,7 +295,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # SANITIZATION
     safe_user_name = html.escape(user.first_name)
-    response_text = new_text
 
     if cfg.mention_user:
         response_text = (
