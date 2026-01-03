@@ -12,7 +12,7 @@ from typing import List, Tuple
 
 # Third-party imports
 import httpx
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import BotCommand, InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ChatType, ParseMode
 from telegram.error import NetworkError, TimedOut
 from telegram.ext import (
@@ -381,6 +381,14 @@ async def version_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(response, parse_mode=ParseMode.HTML)
 
 
+async def post_init(application: Application):
+    """Sets the bot commands for autocomplete."""
+    commands = [
+        BotCommand("version", "Show bot version and commit hash"),
+    ]
+    await application.bot.set_my_commands(commands)
+
+
 def main():
     if not cfg.token:
         return
@@ -399,7 +407,8 @@ def main():
     application = (
         Application.builder()
         .token(cfg.token)
-        .request(request)  # Pass the configured request object here
+        .request(request)
+        .post_init(post_init)
         .build()
     )
 
