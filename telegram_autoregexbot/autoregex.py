@@ -805,7 +805,73 @@ async def reminders_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reason = f" ({row['reason']})" if row["reason"] else ""
         text += f"• <code>{time_str}</code>{reason}\n"
 
-    await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+    keyboard = [[InlineKeyboardButton("🗑 Manage / Delete", callback_data="rem:manage")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+
+
+async def reminders_manage_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Shows a list of user reminders with delete buttons."""
+    query = update.callback_query
+    chat_id = update.effective_chat.id
+    user_id = update.effective_user.id
+    
+    rows = db.get_user_reminders(chat_id, user_id)
+    if not rows:
+        text = "You have no pending reminders."
+        if query:
+            await query.edit_message_text(text)
+        else:
+            await update.message.reply_text(text)
+        return
+
+    keyboard = []
+    for row in rows:
+        remind_time = datetime.fromisoformat(row["remind_time"]).astimezone(ZoneInfo("Asia/Kolkata"))
+        time_str = remind_time.strftime("%d/%m %H:%M")
+        reason = row["reason"][:15] + ".." if row["reason"] and len(row["reason"]) > 15 else (row["reason"] or "No reason")
+        
+        keyboard.append([
+            InlineKeyboardButton(
+                f"🗑 {time_str} - {reason}",
+                callback_data=f"rem:del:{row['id']}"
+            )
+        ])
+    
+    keyboard.append([InlineKeyboardButton("Close", callback_data="rem:close")])
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    text = "<b>Manage Your Reminders</b>\nTap a reminder to delete it:"
+    
+    if query:
+        await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+    else:
+        await update.message.reply_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+
+
+async def handle_reminder_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handles reminder management callbacks."""
+    query = update.callback_query
+    await query.answer()
+    
+    data = query.data
+    if data == "rem:close":
+        await query.message.delete()
+        return
+    
+    if data == "rem:manage":
+        await reminders_manage_menu(update, context)
+        return
+        
+    if data.startswith("set:"): # Guard for safety if needed, but pattern handles it
+        return
+
+    # rem:del:id
+    parts = data.split(":")
+    if len(parts) == 3 and parts[1] == "del":
+        reminder_id = int(parts[2])
+        db.delete_reminder(reminder_id)
+        # Refresh the menu
+        await reminders_manage_menu(update, context)
 
 
 async def reminders_all_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1170,6 +1236,9 @@ def main():
     )
     application.add_handler(
         CallbackQueryHandler(handle_settings_callback, pattern="^set:")
+    )
+    application.add_handler(
+        CallbackQueryHandler(handle_reminder_callback, pattern="^rem:")
     )
 
     print("Bot is running. Press Ctrl+C to stop.")
