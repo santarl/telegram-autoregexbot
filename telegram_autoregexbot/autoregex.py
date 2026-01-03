@@ -971,24 +971,29 @@ async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not check_access(update):
         return
 
-    # Only allow whitelisted users, access control users, or admins to change settings
     user = update.effective_user
     query = update.callback_query
 
-    if user.id not in cfg.whitelist_users and user.id not in cfg.access_control_users:
-        # Check if admin if in group
-        is_admin = False
-        if update.effective_chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
+    # 1. Determine Admin Status (for groups)
+    is_admin = False
+    if update.effective_chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
+        try:
             member = await context.bot.get_chat_member(update.effective_chat.id, user.id)
             is_admin = member.status in ["administrator", "creator"]
-        
-        if not is_admin:
-            msg = "⛔ Access denied. Only whitelisted users can change settings."
-            if query:
-                await query.answer(msg, show_alert=True)
-            else:
-                await update.message.reply_text(msg)
-            return
+        except Exception:
+            pass
+
+    # 2. Check Permission to view settings
+    is_whitelisted = user.id in cfg.whitelist_users
+    is_access_user = user.id in cfg.access_control_users
+    
+    if not is_whitelisted and not is_access_user and not is_admin:
+        msg = "⛔ Access denied. Only whitelisted users or admins can change settings."
+        if query:
+            await query.answer(msg, show_alert=True)
+        else:
+            await update.message.reply_text(msg)
+        return
 
     keyboard = [
         [
@@ -1024,11 +1029,11 @@ async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
 
     # Admin Claim Access Button
-    if cfg.allow_admin_claim_access and is_admin and user.id not in cfg.access_control_users:
+    if cfg.allow_admin_claim_access and is_admin and not is_access_user:
         keyboard.insert(0, [InlineKeyboardButton("👑 Claim Bot Access", callback_data="set:action:claim_access")])
 
     # Advanced Settings (Backup/Restore/Claim Toggle) - Only for access_control_users in DMs
-    if update.effective_chat.type == ChatType.PRIVATE and user.id in cfg.access_control_users:
+    if update.effective_chat.type == ChatType.PRIVATE and is_access_user:
         keyboard.append([
              InlineKeyboardButton(
                 f"{'✅' if cfg.allow_admin_claim_access else '❌'} Allow Admin Claim",
