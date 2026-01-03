@@ -11,6 +11,6 @@ def lint(session):
         "--inexact",
     )
 
-    session.run("pyrefly", "check", "bot/")
-    session.run("ruff", "format", "bot/")
-    session.run("ruff", "check", "bot/")
+    session.run("pyrefly", "check", "telegram_autoregexbot/")
+    session.run("ruff", "format", "telegram_autoregexbot/")
+    session.run("ruff", "check", "telegram_autoregexbot/")
