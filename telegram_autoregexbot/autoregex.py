@@ -319,6 +319,34 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Main message handler."""
     cfg.check_hot_reload()
 
+    # --- RESTORE CONFIG LOGIC ---
+    if update.message and update.message.document:
+        doc = update.message.document
+        if doc.file_name == "autoregexbot.cfg" or doc.file_name.endswith(".cfg"):
+            if not check_access(update):
+                return
+            
+            # Check for whitelist/admin
+            user = update.effective_user
+            is_whitelisted = user.id in cfg.whitelist_users
+            is_admin = False
+            if update.effective_chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
+                member = await context.bot.get_chat_member(update.effective_chat.id, user.id)
+                is_admin = member.status in ["administrator", "creator"]
+            
+            if not is_whitelisted and not is_admin:
+                return
+
+            try:
+                new_file = await context.bot.get_file(doc.file_id)
+                await new_file.download_to_drive(cfg.config_file)
+                cfg.load_config()
+                await update.message.reply_text("✅ <b>Configuration restored successfully.</b>", parse_mode=ParseMode.HTML)
+                return
+            except Exception as e:
+                await update.message.reply_text(f"❌ <b>Failed to restore configuration:</b> {e}", parse_mode=ParseMode.HTML)
+                return
+
     if not update.message or not update.message.text:
         return
 
@@ -715,6 +743,12 @@ async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ],
         [
             InlineKeyboardButton(
+                "📤 Backup Config",
+                callback_data="set:action:backup",
+            )
+        ],
+        [
+            InlineKeyboardButton(
                 "⚠️ Reset to Defaults",
                 callback_data="set:menu:reset_confirm",
             )
@@ -803,6 +837,18 @@ async def handle_settings_callback(update: Update, context: ContextTypes.DEFAULT
     # Sub-menu navigation
     if data == "set:menu:subs":
         await substitutions_menu(update, context)
+        return
+    if data == "set:action:backup":
+        if os.path.exists(cfg.config_file):
+            with open(cfg.config_file, "rb") as f:
+                await query.message.reply_document(
+                    document=f,
+                    filename="autoregexbot.cfg",
+                    caption="📂 <b>Bot Configuration Backup</b>",
+                    parse_mode=ParseMode.HTML
+                )
+        else:
+            await query.answer("❌ Local config file not found.", show_alert=True)
         return
     if data == "set:menu:reset_confirm":
         await reset_confirmation_menu(update, context)
@@ -907,7 +953,7 @@ def main():
     application.add_handler(CommandHandler("remindme", remind_command))
     application.add_handler(CommandHandler("settings", settings_command))
     application.add_handler(
-        MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)
+        MessageHandler((filters.TEXT | filters.Document.FileExtension("cfg")) & ~filters.COMMAND, handle_message)
     )
     application.add_handler(
         CallbackQueryHandler(handle_delete_callback, pattern="^del:")
