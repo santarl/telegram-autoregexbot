@@ -223,6 +223,8 @@ class ConfigManager:
             self.blacklist_chats = self._get_int_list("access", "blacklist_chats")
             self.whitelist_users = self._get_int_list("access", "whitelist_users")
             self.blacklist_users = self._get_int_list("access", "blacklist_users")
+            self.access_control_users = self._get_int_list("access", "access_control_users")
+            self.allow_admin_claim_access = self.config.getboolean("access", "allow_admin_claim_access", fallback=False)
 
             # Rules
             self.rules = self._parse_rules()
@@ -231,6 +233,15 @@ class ConfigManager:
 
         except Exception as e:
             logger.error(f"Error loading configuration: {e}")
+
+    def add_access_control_user(self, user_id):
+        """Adds a user ID to the access_control_users list and saves config."""
+        if user_id not in self.access_control_users:
+            self.access_control_users.append(user_id)
+            # Serialize list to string
+            val_str = ",".join(map(str, self.access_control_users))
+            return self.set_and_save("access", "access_control_users", val_str)
+        return True
 
     def set_and_save(self, section, key, value):
         """Updates a setting in memory and saves it to the local config file."""
@@ -425,18 +436,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message and update.message.document and context.user_data.get("awaiting_config"):
         doc = update.message.document
         if doc.file_name == "autoregexbot.cfg" or doc.file_name.endswith(".cfg"):
-            if not check_access(update):
-                return
-            
-            # Check for whitelist/admin
             user = update.effective_user
-            is_whitelisted = user.id in cfg.whitelist_users
-            is_admin = False
-            if update.effective_chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
-                member = await context.bot.get_chat_member(update.effective_chat.id, user.id)
-                is_admin = member.status in ["administrator", "creator"]
-            
-            if not is_whitelisted and not is_admin:
+            if update.effective_chat.type != ChatType.PRIVATE or user.id not in cfg.access_control_users:
                 return
 
             try:
@@ -672,6 +673,22 @@ async def version_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     response += f"Commit: <code>{commit_sha}</code>"
 
     await update.message.reply_text(response, parse_mode=ParseMode.HTML)
+
+
+async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handles the /start command and initialization checks."""
+    if not check_access(update):
+        return
+    
+    text = "👋 <b>Hello!</b> I am the AutoRegex Bot.\nI fix broken social media links automatically."
+    
+    # Check if config exists
+    if not os.path.exists(cfg.config_file):
+        text += "\n\n⚠️ <b>Configuration File Missing!</b>\nI am running with default settings. Use the button below to initialize the configuration file."
+        keyboard = [[InlineKeyboardButton("🛠 Initialize Config & DB", callback_data="set:init:config")]]
+        await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+    else:
+        await update.message.reply_text(text, parse_mode=ParseMode.HTML)
 
 
 def parse_duration(duration_str: str) -> int:
@@ -933,11 +950,11 @@ async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not check_access(update):
         return
 
-    # Only allow whitelisted users or admins to change settings
+    # Only allow whitelisted users, access control users, or admins to change settings
     user = update.effective_user
     query = update.callback_query
 
-    if user.id not in cfg.whitelist_users:
+    if user.id not in cfg.whitelist_users and user.id not in cfg.access_control_users:
         # Check if admin if in group
         is_admin = False
         if update.effective_chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
@@ -983,7 +1000,21 @@ async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 callback_data="set:menu:subs",
             )
         ],
-        [
+    ]
+
+    # Admin Claim Access Button
+    if cfg.allow_admin_claim_access and is_admin and user.id not in cfg.access_control_users:
+        keyboard.insert(0, [InlineKeyboardButton("👑 Claim Bot Access", callback_data="set:action:claim_access")])
+
+    # Advanced Settings (Backup/Restore/Claim Toggle) - Only for access_control_users in DMs
+    if update.effective_chat.type == ChatType.PRIVATE and user.id in cfg.access_control_users:
+        keyboard.append([
+             InlineKeyboardButton(
+                f"{'✅' if cfg.allow_admin_claim_access else '❌'} Allow Admin Claim",
+                callback_data="set:access:allow_admin_claim_access",
+            )
+        ])
+        keyboard.append([
             InlineKeyboardButton(
                 "📤 Backup Config",
                 callback_data="set:action:backup",
@@ -992,7 +1023,9 @@ async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "📥 Restore Config",
                 callback_data="set:action:restore_prompt",
             )
-        ],
+        ])
+
+    keyboard.extend([
         [
             InlineKeyboardButton(
                 "⚠️ Reset to Defaults",
@@ -1006,7 +1039,7 @@ async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         ],
         [InlineKeyboardButton("Close", callback_data="set:close")],
-    ]
+    ])
     reply_markup = InlineKeyboardMarkup(keyboard)
     text = "<b>Bot Settings</b>"
     
@@ -1095,18 +1128,221 @@ async def substitutions_menu(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 
 async def handle_settings_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+
     """Handles settings button clicks."""
+
+
     query = update.callback_query
-    
+
+
     data = query.data
+
+
+
+
+
     if data == "set:close":
+
+
         await query.answer("Menu closed.")
+
+
         await query.message.delete()
+
+
         return
 
-    if not data.startswith("set:"):
-        await query.answer()
+
+
+
+
+        if not data.startswith("set:"):
+
+
+
+
+
+            await query.answer()
+
+
+
+
+
+            return
+
+
+
+
+
+    
+
+
+
+
+
+        # Initialization Bypass
+
+
+
+
+
+        if data == "set:init:config":
+
+
+
+
+
+            if os.path.exists(cfg.config_file):
+
+
+
+
+
+                await query.answer("✅ Config already exists.")
+
+
+
+
+
+                await query.message.delete()
+
+
+
+
+
+                return
+
+
+
+
+
+            
+
+
+
+
+
+            if cfg.reset_to_defaults():
+
+
+
+
+
+                 await query.answer("✅ Initialized successfully!", show_alert=True)
+
+
+
+
+
+                 await query.edit_message_text(
+
+
+
+
+
+                     "✅ <b>Initialization Complete!</b>\n"
+
+
+
+
+
+                     "The configuration file <code>autoregexbot.cfg</code> has been created.\n"
+
+
+
+
+
+                     "You can now use /settings to configure the bot.",
+
+
+
+
+
+                     parse_mode=ParseMode.HTML
+
+
+
+
+
+                 )
+
+
+
+
+
+                 # Reload to ensure memory is fresh
+
+
+
+
+
+                 cfg.load_config()
+
+
+
+
+
+            else:
+
+
+
+
+
+                await query.answer("❌ Failed to initialize.", show_alert=True)
+
+
+
+
+
+            return
+
+
+
+    user = query.from_user
+    
+    # Permission Check
+    is_authorized = user.id in cfg.whitelist_users or user.id in cfg.access_control_users
+    if not is_authorized and query.message.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
+        try:
+
+
+
+
+
+        
+
+
+
+
+
+            member = await context.bot.get_chat_member(query.message.chat_id, user.id)
+            is_authorized = member.status in ["administrator", "creator"]
+        except Exception:
+            pass
+    
+    if not is_authorized:
+
+
+
+
+
+        
+
+
+
+
+
+        
+
+
+        await query.answer("⛔ Access denied.", show_alert=True)
+
+
         return
+
+
+
 
     # Sub-menu navigation
     if data == "set:menu:subs":
@@ -1157,6 +1393,53 @@ async def handle_settings_callback(update: Update, context: ContextTypes.DEFAULT
         await query.answer("Back to main settings.")
         context.user_data["delete_mode"] = False
         await settings_command(update, context)
+        return
+    
+    if data == "set:action:backup":
+        if update.effective_chat.type != ChatType.PRIVATE or query.from_user.id not in cfg.access_control_users:
+            await query.answer("⛔ Access denied.", show_alert=True)
+            return
+        
+        await query.answer("Generating backup...")
+        if os.path.exists(cfg.config_file):
+            with open(cfg.config_file, "rb") as f:
+                await context.bot.send_document(
+                    chat_id=update.effective_chat.id,
+                    document=f,
+                    filename="autoregexbot.cfg",
+                    caption="📄 <b>Configuration Backup</b>",
+                    parse_mode=ParseMode.HTML
+                )
+        else:
+            await query.message.reply_text("❌ Config file not found.")
+        return
+
+    if data == "set:action:claim_access":
+        if not cfg.allow_admin_claim_access:
+            await query.answer("❌ This feature is disabled.", show_alert=True)
+            return
+        
+        if cfg.add_access_control_user(query.from_user.id):
+             await query.answer("👑 Access Granted! You are now in the Access Control list.", show_alert=True)
+             # Refresh menu to show new options
+             await settings_command(update, context)
+        else:
+             await query.answer("❌ Failed to save config.", show_alert=True)
+        return
+
+    if data == "set:action:restore_prompt":
+        if update.effective_chat.type != ChatType.PRIVATE or query.from_user.id not in cfg.access_control_users:
+            await query.answer("⛔ Access denied.", show_alert=True)
+            return
+            
+        await query.answer()
+        context.user_data["awaiting_config"] = True
+        await query.message.reply_text(
+            "📥 <b>Restore Configuration</b>\n\n"
+            "Please send the <code>autoregexbot.cfg</code> file now.\n"
+            "<i>Note: This will overwrite your current settings.</i>",
+            parse_mode=ParseMode.HTML
+        )
         return
 
     # Format: set:section:key OR set:rule:key OR set:delrule:key
@@ -1308,6 +1591,7 @@ def main():
     )
 
     # 3. Add Handlers
+    application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("version", version_command))
     application.add_handler(CommandHandler("remindme", remind_command))
     application.add_handler(CommandHandler("reminders", reminders_command))

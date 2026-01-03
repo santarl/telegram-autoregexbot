@@ -35,6 +35,10 @@ blacklist_chats =
 # Comma-separated list of User IDs (Integers)
 whitelist_users =
 blacklist_users =
+access_control_users =
+
+# If true, group admins can click a button in settings to add themselves to access_control_users.
+allow_admin_claim_access = false
 
 [substitutions]
 # ----------------------------------------------------------------------------
