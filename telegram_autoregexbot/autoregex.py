@@ -9,6 +9,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from importlib import metadata
 from typing import List, Tuple
+from zoneinfo import ZoneInfo
 
 # Third-party imports
 import httpx
@@ -489,13 +490,20 @@ async def remind_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     asyncio.create_task(schedule_reminder(context, seconds, job_data))
 
     # Confirmation
-    iso_time = remind_time.strftime("%Y-%m-%dT%H:%M:%SZ")
+    iso_time_utc = remind_time.strftime("%Y-%m-%dT%H:%M:%SZ")
+    
+    # Calculate IST time (defaulting to IST as user timezone isn't provided by Telegram API)
+    ist_time = remind_time.astimezone(ZoneInfo("Asia/Kolkata"))
+    ist_str = ist_time.strftime("%Y-%m-%d %H:%M:%S")
+
     hours, remainder = divmod(seconds, 3600)
     minutes, seconds_left = divmod(remainder, 60)
     t_minus = f"{int(hours):02}:{int(minutes):02}:{int(seconds_left):02}"
 
     confirm_text = (
-        f"✅ I'll remind you at <code>{iso_time}</code> (UTC)\n"
+        "✅⏰\n"
+        f"I'll remind you at <code>{iso_time_utc}</code> (UTC)\n"
+        f"Local time (IST): <code>{ist_str}</code>\n"
         f"T-minus: <code>{t_minus}</code>"
     )
     await message.reply_text(confirm_text, parse_mode=ParseMode.HTML)
