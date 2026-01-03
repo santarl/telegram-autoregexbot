@@ -5,4 +5,5 @@ dist/
 build/
 *.egg-info
 secrets.cfg
+autoregexbot.cfg
 .env

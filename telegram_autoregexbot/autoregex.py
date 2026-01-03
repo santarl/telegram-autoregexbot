@@ -39,8 +39,14 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 
 
 class ConfigManager:
-    def __init__(self, config_file="autoregexbot.cfg", secrets_file="secrets.cfg"):
+    def __init__(
+        self,
+        config_file="autoregexbot.cfg",
+        example_file="autoregexbot.cfg.example",
+        secrets_file="secrets.cfg",
+    ):
         self.config_file = config_file
+        self.example_file = example_file
         self.secrets_file = secrets_file
 
         # Disable interpolation to allow % characters
@@ -60,17 +66,26 @@ class ConfigManager:
 
         # 2. Load Dynamic Config
         self._last_mtime = 0
+        self._last_example_mtime = 0
         self.load_config()
 
     def load_config(self):
         try:
-            if not os.path.exists(self.config_file):
-                logger.warning(
-                    f"Config file {self.config_file} not found. Using defaults."
-                )
+            # Load example defaults first, then local config overrides
+            files_to_read = []
+            if os.path.exists(self.example_file):
+                files_to_read.append(self.example_file)
+                self._last_example_mtime = os.path.getmtime(self.example_file)
+
+            if os.path.exists(self.config_file):
+                files_to_read.append(self.config_file)
+                self._last_mtime = os.path.getmtime(self.config_file)
+
+            if not files_to_read:
+                logger.warning("No configuration files found. Using hardcoded defaults.")
                 return
 
-            self.config.read(self.config_file)
+            self.config.read(files_to_read)
 
             # Bot Settings
             self.send_as_reply = self.config.getboolean(
@@ -109,7 +124,6 @@ class ConfigManager:
             # Rules
             self.rules = self._parse_rules()
 
-            self._last_mtime = os.path.getmtime(self.config_file)
             logger.info(f"Configuration loaded. {len(self.rules)} rules active.")
 
         except Exception as e:
@@ -117,11 +131,17 @@ class ConfigManager:
 
     def check_hot_reload(self):
         try:
-            if not os.path.exists(self.config_file):
-                return
+            reload_needed = False
+            
+            if os.path.exists(self.example_file):
+                if os.path.getmtime(self.example_file) != self._last_example_mtime:
+                    reload_needed = True
+            
+            if os.path.exists(self.config_file):
+                if os.path.getmtime(self.config_file) != self._last_mtime:
+                    reload_needed = True
 
-            current_mtime = os.path.getmtime(self.config_file)
-            if current_mtime != self._last_mtime:
+            if reload_needed:
                 logger.info("Config file change detected. Reloading...")
                 self.load_config()
         except Exception as e:
