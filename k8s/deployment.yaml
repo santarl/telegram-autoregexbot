@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
         - name: bot
-          image: ghcr.io/santarl/telegram-autoregexbot:9c3d583d02ae1f95f8131aaa0ce77cb5fa198dc0
+          image: ghcr.io/santarl/telegram-autoregexbot:fcf231a68f826560e7cec42f2003193ccd9bc394
           env:
             - name: BOT_TOKEN
               valueFrom:
