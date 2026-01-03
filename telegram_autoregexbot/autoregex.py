@@ -109,6 +109,7 @@ class ConfigManager:
             self.process_whole_message = self.config.getboolean(
                 "bot", "process_whole_message", fallback=False
             )
+            self.disabled_rules = self._get_list("bot", "disabled_rules")
 
             # Access Control
             self.access_policy = self.config.get(
@@ -149,6 +150,26 @@ class ConfigManager:
             logger.error(f"Failed to save config: {e}")
             return False
 
+    def toggle_rule(self, rule_key):
+        """Toggles a rule between enabled and disabled."""
+        current_disabled = self._get_list("bot", "disabled_rules")
+        if rule_key in current_disabled:
+            current_disabled.remove(rule_key)
+        else:
+            current_disabled.append(rule_key)
+        
+        return self.set_and_save("bot", "disabled_rules", ",".join(current_disabled))
+
+    def get_all_substitution_keys(self):
+        """Returns all keys in the substitutions section that look like rules."""
+        if not self.config.has_section("substitutions"):
+            return []
+        return [
+            key
+            for key, val in self.config.items("substitutions")
+            if val.startswith("s")
+        ]
+
     def check_hot_reload(self):
         try:
             reload_needed = False
@@ -182,6 +203,9 @@ class ConfigManager:
 
         for key, val in self.config.items("substitutions"):
             if not val.startswith("s"):
+                continue
+
+            if key in self.disabled_rules:
                 continue
 
             try:
@@ -621,10 +645,44 @@ async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 callback_data="set:bot:enable_delete_button",
             )
         ],
+        [
+            InlineKeyboardButton(
+                "📂 Individual Rules (Substitutions)",
+                callback_data="set:menu:subs",
+            )
+        ],
         [InlineKeyboardButton("Close", callback_data="set:close")],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text("<b>Bot Settings</b>", reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+
+
+async def substitutions_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Shows the menu to toggle individual regex rules."""
+    query = update.callback_query
+    
+    keys = cfg.get_all_substitution_keys()
+    keyboard = []
+    
+    for key in keys:
+        is_enabled = key not in cfg.disabled_rules
+        status_icon = "✅" if is_enabled else "❌"
+        keyboard.append([
+            InlineKeyboardButton(
+                f"{status_icon} {key}",
+                callback_data=f"set:rule:{key}"
+            )
+        ])
+    
+    keyboard.append([InlineKeyboardButton("⬅️ Back", callback_data="set:menu:main")])
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    text = "<b>Toggle Individual Rules</b>\n<i>Changes are applied instantly.</i>"
+    
+    if query:
+        await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+    else:
+        await update.message.reply_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
 
 
 async def handle_settings_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -640,20 +698,35 @@ async def handle_settings_callback(update: Update, context: ContextTypes.DEFAULT
     if not data.startswith("set:"):
         return
 
-    # Format: set:section:key
+    # Sub-menu navigation
+    if data == "set:menu:subs":
+        await substitutions_menu(update, context)
+        return
+    if data == "set:menu:main":
+        # Remove old message and resend main settings to refresh
+        await query.message.delete()
+        await settings_command(update, context)
+        return
+
+    # Format: set:section:key OR set:rule:key
     parts = data.split(":")
-    section = parts[1]
+    type_ = parts[1]
     key = parts[2]
 
-    # Get current value
+    if type_ == "rule":
+        if cfg.toggle_rule(key):
+            await substitutions_menu(update, context)
+        return
+
+    # Original boolean toggle logic
+    section = type_
     current_val = getattr(cfg, key, None)
     if isinstance(current_val, bool):
         new_val = not current_val
         if cfg.set_and_save(section, key, new_val):
-            # Refresh keyboard
-            await settings_command(update, context)
-            # Remove the old settings message to avoid clutter
+            # Remove the old settings message and resend to refresh UI
             await query.message.delete()
+            await settings_command(update, context)
 
 
 async def post_init(application: Application):
