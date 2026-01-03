@@ -173,6 +173,12 @@ class ConfigManager:
 
     def load_config(self):
         try:
+            # Re-initialize config to avoid merging old values with new ones on reload
+            self.config = configparser.ConfigParser(interpolation=None)
+            
+            # Re-load secrets (as they are part of the instance)
+            self.config.read([self.secrets_file])
+
             # Load example defaults first, then local config overrides
             files_to_read = []
             if os.path.exists(self.example_file):
@@ -246,17 +252,22 @@ class ConfigManager:
     def set_and_save(self, section, key, value):
         """Updates a setting in memory and saves it to the local config file."""
         try:
-            if not self.config.has_section(section):
-                self.config.add_section(section)
+            # Load only the local config to avoid writing example defaults into it
+            local_cfg = configparser.ConfigParser(interpolation=None)
+            if os.path.exists(self.config_file):
+                local_cfg.read(self.config_file)
+            
+            if not local_cfg.has_section(section):
+                local_cfg.add_section(section)
             
             # Convert bool to string for configparser
             val_str = str(value).lower() if isinstance(value, bool) else str(value)
-            self.config.set(section, key, val_str)
+            local_cfg.set(section, key, val_str)
 
             with open(self.config_file, "w") as f:
-                self.config.write(f)
+                local_cfg.write(f)
             
-            # Re-sync local variables
+            # Re-sync memory by reloading everything
             self.load_config()
             return True
         except Exception as e:
