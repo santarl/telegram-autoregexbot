@@ -320,7 +320,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cfg.check_hot_reload()
 
     # --- RESTORE CONFIG LOGIC ---
-    if update.message and update.message.document:
+    if update.message and update.message.document and context.user_data.get("awaiting_config"):
         doc = update.message.document
         if doc.file_name == "autoregexbot.cfg" or doc.file_name.endswith(".cfg"):
             if not check_access(update):
@@ -341,6 +341,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 new_file = await context.bot.get_file(doc.file_id)
                 await new_file.download_to_drive(cfg.config_file)
                 cfg.load_config()
+                context.user_data["awaiting_config"] = False
                 await update.message.reply_text("✅ <b>Configuration restored successfully.</b>", parse_mode=ParseMode.HTML)
                 return
             except Exception as e:
@@ -745,6 +746,10 @@ async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             InlineKeyboardButton(
                 "📤 Backup Config",
                 callback_data="set:action:backup",
+            ),
+            InlineKeyboardButton(
+                "📥 Restore Config",
+                callback_data="set:action:restore_prompt",
             )
         ],
         [
@@ -849,6 +854,14 @@ async def handle_settings_callback(update: Update, context: ContextTypes.DEFAULT
                 )
         else:
             await query.answer("❌ Local config file not found.", show_alert=True)
+        return
+    if data == "set:action:restore_prompt":
+        context.user_data["awaiting_config"] = True
+        await query.message.reply_text(
+            "📥 <b>Restoring Configuration</b>\n"
+            "Please upload your <code>.cfg</code> file now to overwrite the current settings.",
+            parse_mode=ParseMode.HTML
+        )
         return
     if data == "set:menu:reset_confirm":
         await reset_confirmation_menu(update, context)
