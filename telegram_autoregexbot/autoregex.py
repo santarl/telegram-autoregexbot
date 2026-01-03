@@ -930,6 +930,8 @@ async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Only allow whitelisted users or admins to change settings
     user = update.effective_user
+    query = update.callback_query
+
     if user.id not in cfg.whitelist_users:
         # Check if admin if in group
         is_admin = False
@@ -938,7 +940,11 @@ async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             is_admin = member.status in ["administrator", "creator"]
         
         if not is_admin:
-            await update.message.reply_text("⛔ Access denied. Only whitelisted users can change settings.")
+            msg = "⛔ Access denied. Only whitelisted users can change settings."
+            if query:
+                await query.answer(msg, show_alert=True)
+            else:
+                await update.message.reply_text(msg)
             return
 
     keyboard = [
@@ -997,7 +1003,12 @@ async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("Close", callback_data="set:close")],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("<b>Bot Settings</b>", reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+    text = "<b>Bot Settings</b>"
+    
+    if query:
+        await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+    else:
+        await update.message.reply_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
 
 
 async def restart_confirmation_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1151,8 +1162,6 @@ async def handle_settings_callback(update: Update, context: ContextTypes.DEFAULT
         return
     if data == "set:menu:main":
         context.user_data["delete_mode"] = False
-        # Remove old message and resend main settings to refresh
-        await query.message.delete()
         await settings_command(update, context)
         return
 
@@ -1188,8 +1197,7 @@ async def handle_settings_callback(update: Update, context: ContextTypes.DEFAULT
     if isinstance(current_val, bool):
         new_val = not current_val
         if cfg.set_and_save(section, key, new_val):
-            # Remove the old settings message and resend to refresh UI
-            await query.message.delete()
+            # Refresh UI in place
             await settings_command(update, context)
 
 
