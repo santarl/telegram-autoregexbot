@@ -185,6 +185,19 @@ class ConfigManager:
             logger.error(f"Failed to delete rule: {e}")
             return False
 
+    def reset_to_defaults(self):
+        """Resets the local config by copying from the example file."""
+        try:
+            import shutil
+            if os.path.exists(self.example_file):
+                shutil.copy(self.example_file, self.config_file)
+                self.load_config()
+                return True
+            return False
+        except Exception as e:
+            logger.error(f"Failed to reset config: {e}")
+            return False
+
     def get_all_substitution_keys(self):
         """Returns all keys in the substitutions section that look like rules."""
         if not self.config.has_section("substitutions"):
@@ -700,10 +713,33 @@ async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 callback_data="set:menu:subs",
             )
         ],
+        [
+            InlineKeyboardButton(
+                "⚠️ Reset to Defaults",
+                callback_data="set:menu:reset_confirm",
+            )
+        ],
         [InlineKeyboardButton("Close", callback_data="set:close")],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text("<b>Bot Settings</b>", reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+
+
+async def reset_confirmation_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Shows a scary confirmation menu before resetting."""
+    query = update.callback_query
+    keyboard = [
+        [InlineKeyboardButton("🔥 YES, RESET EVERYTHING", callback_data="set:action:reset_do")],
+        [InlineKeyboardButton("⬅️ Cancel", callback_data="set:menu:main")],
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    text = (
+        "<b>⚠️ WARNING: RESET TO DEFAULTS</b>\n\n"
+        "This will delete ALL your custom rules and settings in <code>autoregexbot.cfg</code> "
+        "and restore everything from the example file.\n\n"
+        "<b>This cannot be undone.</b> Are you sure?"
+    )
+    await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
 
 
 async def substitutions_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -767,6 +803,19 @@ async def handle_settings_callback(update: Update, context: ContextTypes.DEFAULT
     # Sub-menu navigation
     if data == "set:menu:subs":
         await substitutions_menu(update, context)
+        return
+    if data == "set:menu:reset_confirm":
+        await reset_confirmation_menu(update, context)
+        return
+    if data == "set:action:reset_do":
+        if cfg.reset_to_defaults():
+            await query.edit_message_text("✅ <b>Configuration has been reset to defaults.</b>", parse_mode=ParseMode.HTML)
+            # Send fresh settings after a short delay
+            await asyncio.sleep(2)
+            await settings_command(update, context)
+            await query.message.delete()
+        else:
+            await query.answer("❌ Failed to reset configuration.", show_alert=True)
         return
     if data == "set:menu:subs_delete":
         context.user_data["delete_mode"] = True
