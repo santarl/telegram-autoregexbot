@@ -129,6 +129,26 @@ class ConfigManager:
         except Exception as e:
             logger.error(f"Error loading configuration: {e}")
 
+    def set_and_save(self, section, key, value):
+        """Updates a setting in memory and saves it to the local config file."""
+        try:
+            if not self.config.has_section(section):
+                self.config.add_section(section)
+            
+            # Convert bool to string for configparser
+            val_str = str(value).lower() if isinstance(value, bool) else str(value)
+            self.config.set(section, key, val_str)
+
+            with open(self.config_file, "w") as f:
+                self.config.write(f)
+            
+            # Re-sync local variables
+            self.load_config()
+            return True
+        except Exception as e:
+            logger.error(f"Failed to save config: {e}")
+            return False
+
     def check_hot_reload(self):
         try:
             reload_needed = False
@@ -558,11 +578,90 @@ async def remind_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await message.reply_text(confirm_text, parse_mode=ParseMode.HTML)
 
 
+async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Shows the settings menu."""
+    if not check_access(update):
+        return
+
+    # Only allow whitelisted users or admins to change settings
+    user = update.effective_user
+    if user.id not in cfg.whitelist_users:
+        # Check if admin if in group
+        is_admin = False
+        if update.effective_chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
+            member = await context.bot.get_chat_member(update.effective_chat.id, user.id)
+            is_admin = member.status in ["administrator", "creator"]
+        
+        if not is_admin:
+            await update.message.reply_text("⛔ Access denied. Only whitelisted users can change settings.")
+            return
+
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                f"{'✅' if cfg.send_as_reply else '❌'} Reply to original",
+                callback_data="set:bot:send_as_reply",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                f"{'✅' if cfg.mention_user else '❌'} Mention User",
+                callback_data="set:bot:mention_user",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                f"{'✅' if cfg.process_whole_message else '❌'} Process Whole Msg",
+                callback_data="set:bot:process_whole_message",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                f"{'✅' if cfg.enable_delete_button else '❌'} Delete Button",
+                callback_data="set:bot:enable_delete_button",
+            )
+        ],
+        [InlineKeyboardButton("Close", callback_data="set:close")],
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text("<b>Bot Settings</b>", reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+
+
+async def handle_settings_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handles settings button clicks."""
+    query = update.callback_query
+    await query.answer()
+
+    data = query.data
+    if data == "set:close":
+        await query.message.delete()
+        return
+
+    if not data.startswith("set:"):
+        return
+
+    # Format: set:section:key
+    parts = data.split(":")
+    section = parts[1]
+    key = parts[2]
+
+    # Get current value
+    current_val = getattr(cfg, key, None)
+    if isinstance(current_val, bool):
+        new_val = not current_val
+        if cfg.set_and_save(section, key, new_val):
+            # Refresh keyboard
+            await settings_command(update, context)
+            # Remove the old settings message to avoid clutter
+            await query.message.delete()
+
+
 async def post_init(application: Application):
     """Sets the bot commands for autocomplete."""
     commands = [
         BotCommand("version", "Show bot version and commit hash"),
         BotCommand("remindme", "Set a reminder. Usage: /remindme 2h (reason)"),
+        BotCommand("settings", "Configure bot settings (Whitelisted only)"),
     ]
     await application.bot.set_my_commands(commands)
 
@@ -593,11 +692,15 @@ def main():
     # 3. Add Handlers
     application.add_handler(CommandHandler("version", version_command))
     application.add_handler(CommandHandler("remindme", remind_command))
+    application.add_handler(CommandHandler("settings", settings_command))
     application.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)
     )
     application.add_handler(
         CallbackQueryHandler(handle_delete_callback, pattern="^del:")
+    )
+    application.add_handler(
+        CallbackQueryHandler(handle_settings_callback, pattern="^set:")
     )
 
     print("Bot is running. Press Ctrl+C to stop.")
