@@ -6,7 +6,7 @@ import os
 import re
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from importlib import metadata
 from typing import List, Tuple
 
@@ -86,6 +86,9 @@ class ConfigManager:
             )
             self.cooldown_seconds = self.config.getfloat(
                 "bot", "cooldown_seconds", fallback=2.0
+            )
+            self.remind_include_link = self.config.getboolean(
+                "bot", "remind_include_link", fallback=True
             )
 
             # Access Control
@@ -374,17 +377,132 @@ async def version_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     commit_sha = os.environ.get("VERSION", "Unknown")
 
-    response = f"<b>Telegram AutoRegex Bot</b>\n"
+    response = "<b>Telegram AutoRegex Bot</b>\n"
     response += f"Version: <code>{pkg_version}</code>\n"
     response += f"Commit: <code>{commit_sha}</code>"
 
     await update.message.reply_text(response, parse_mode=ParseMode.HTML)
 
 
+def parse_duration(duration_str: str) -> int:
+    """Parses a duration string (e.g., 2h, 15m, 1d) and returns total seconds."""
+    total_seconds = 0
+    pattern = re.compile(r"(\d+)\s*([smhd])", re.IGNORECASE)
+    matches = pattern.findall(duration_str)
+
+    if not matches:
+        return 0
+
+    multipliers = {"s": 1, "m": 60, "h": 3600, "d": 86400}
+
+    for amount, unit in matches:
+        total_seconds += int(amount) * multipliers[unit.lower()]
+
+    return total_seconds
+
+
+async def schedule_reminder(
+    context: ContextTypes.DEFAULT_TYPE, seconds: int, job_data: dict
+):
+    """Background task to wait and send the reminder."""
+    await asyncio.sleep(seconds)
+
+    chat_id = job_data["chat_id"]
+    user_id = job_data["user_id"]
+    message_id = job_data["message_id"]
+    reason = job_data["reason"]
+    link = job_data.get("link")
+
+    mention = f"<a href='tg://user?id={user_id}'>Reminder</a>"
+    text = f"🔔 {mention}"
+    if reason:
+        text += f": {reason}"
+
+    if link:
+        text += f"\n\n🔗 <a href='{link}'>Original Message</a>"
+
+    try:
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=text,
+            reply_to_message_id=message_id,
+            parse_mode=ParseMode.HTML,
+        )
+    except Exception as e:
+        logger.error(f"Failed to send reminder: {e}")
+
+
+async def remind_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handles the /remindme command."""
+    if not check_access(update):
+        return
+
+    message = update.effective_message
+    args_str = " ".join(context.args)
+
+    if not args_str:
+        await message.reply_text(
+            "Usage: /remindme [time] (reason)\nExample: /remindme 2h (laundry)"
+        )
+        return
+
+    # Extract reason in parentheses
+    reason = ""
+    reason_match = re.search(r"\((.*)\)", args_str)
+    if reason_match:
+        reason = reason_match.group(1)
+        # Remove reason from args to parse duration
+        duration_part = args_str.replace(reason_match.group(0), "").strip()
+    else:
+        duration_part = args_str
+
+    seconds = parse_duration(duration_part)
+
+    if seconds <= 0:
+        await message.reply_text(
+            "❌ Invalid time format. Use something like 30m, 2h, 1d."
+        )
+        return
+
+    remind_time = datetime.now(timezone.utc) + timedelta(seconds=seconds)
+
+    # Prepare data for the task
+    job_data = {
+        "chat_id": update.effective_chat.id,
+        "user_id": update.effective_user.id,
+        "message_id": message.message_id,
+        "reason": reason,
+    }
+
+    if cfg.remind_include_link and message.reply_to_message:
+        reply = message.reply_to_message
+        if update.effective_chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
+            # Construct link for groups
+            chat_id_str = str(update.effective_chat.id).replace("-100", "")
+            link = f"https://t.me/c/{chat_id_str}/{reply.message_id}"
+            job_data["link"] = link
+
+    # Launch background task
+    asyncio.create_task(schedule_reminder(context, seconds, job_data))
+
+    # Confirmation
+    iso_time = remind_time.strftime("%Y-%m-%dT%H:%M:%SZ")
+    hours, remainder = divmod(seconds, 3600)
+    minutes, seconds_left = divmod(remainder, 60)
+    t_minus = f"{int(hours):02}:{int(minutes):02}:{int(seconds_left):02}"
+
+    confirm_text = (
+        f"✅ I'll remind you at <code>{iso_time}</code> (UTC)\n"
+        f"T-minus: <code>{t_minus}</code>"
+    )
+    await message.reply_text(confirm_text, parse_mode=ParseMode.HTML)
+
+
 async def post_init(application: Application):
     """Sets the bot commands for autocomplete."""
     commands = [
         BotCommand("version", "Show bot version and commit hash"),
+        BotCommand("remindme", "Set a reminder. Usage: /remindme 2h (reason)"),
     ]
     await application.bot.set_my_commands(commands)
 
@@ -414,6 +532,7 @@ def main():
 
     # 3. Add Handlers
     application.add_handler(CommandHandler("version", version_command))
+    application.add_handler(CommandHandler("remindme", remind_command))
     application.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)
     )
