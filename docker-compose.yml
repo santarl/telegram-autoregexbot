@@ -4,10 +4,11 @@ services:
     container_name: telegram-autoregexbot
     restart: unless-stopped
     
-    # Mount config files from host to container
+    # Mount config files and database for persistence
     volumes:
       - ./autoregexbot.cfg:/app/autoregexbot.cfg
       - ./secrets.cfg:/app/secrets.cfg
+      - ./reminders.db:/app/reminders.db
     
     # Optional: Pass token via ENV instead of secrets.cfg
     # environment:
