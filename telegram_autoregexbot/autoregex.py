@@ -160,6 +160,31 @@ class ConfigManager:
         
         return self.set_and_save("bot", "disabled_rules", ",".join(current_disabled))
 
+    def add_rule(self, key, value):
+        """Adds or updates a substitution rule."""
+        return self.set_and_save("substitutions", key, value)
+
+    def delete_rule(self, key):
+        """Removes a substitution rule."""
+        try:
+            if self.config.has_option("substitutions", key):
+                self.config.remove_option("substitutions", key)
+                
+                # Also clean up from disabled_rules if it was there
+                current_disabled = self._get_list("bot", "disabled_rules")
+                if key in current_disabled:
+                    current_disabled.remove(key)
+                    self.config.set("bot", "disabled_rules", ",".join(current_disabled))
+
+                with open(self.config_file, "w") as f:
+                    self.config.write(f)
+                self.load_config()
+                return True
+            return False
+        except Exception as e:
+            logger.error(f"Failed to delete rule: {e}")
+            return False
+
     def get_all_substitution_keys(self):
         """Returns all keys in the substitutions section that look like rules."""
         if not self.config.has_section("substitutions"):
@@ -287,6 +312,30 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     chat = update.effective_chat
     message = update.message
+
+    # --- SETTINGS INPUT LOGIC ---
+    if context.user_data.get("awaiting_rule"):
+        # Check if it's the same user who initiated
+        text = message.text.strip()
+        if "=" in text:
+            try:
+                key, val = text.split("=", 1)
+                key = key.strip()
+                val = val.strip()
+                if val.startswith("s"):
+                    if cfg.add_rule(key, val):
+                        await message.reply_text(f"✅ Rule <code>{key}</code> added/updated.", parse_mode=ParseMode.HTML)
+                        context.user_data["awaiting_rule"] = False
+                        return
+                
+                await message.reply_text("❌ Invalid format. Use: <code>name = s@pattern@replacement@flags</code>", parse_mode=ParseMode.HTML)
+                return
+            except Exception as e:
+                await message.reply_text(f"❌ Error: {e}")
+                return
+        
+        await message.reply_text("❌ Invalid format. Use: <code>name = s@pattern@replacement@flags</code>")
+        return
 
     # Ignore self
     if user.id == context.bot.id:
@@ -661,23 +710,40 @@ async def substitutions_menu(update: Update, context: ContextTypes.DEFAULT_TYPE)
     """Shows the menu to toggle individual regex rules."""
     query = update.callback_query
     
+    # Check if we are in delete mode
+    is_delete_mode = context.user_data.get("delete_mode", False)
+    
     keys = cfg.get_all_substitution_keys()
     keyboard = []
     
     for key in keys:
-        is_enabled = key not in cfg.disabled_rules
-        status_icon = "✅" if is_enabled else "❌"
-        keyboard.append([
-            InlineKeyboardButton(
-                f"{status_icon} {key}",
-                callback_data=f"set:rule:{key}"
-            )
-        ])
+        if is_delete_mode:
+            btn_text = f"🗑 {key}"
+            callback = f"set:delrule:{key}"
+        else:
+            is_enabled = key not in cfg.disabled_rules
+            status_icon = "✅" if is_enabled else "❌"
+            btn_text = f"{status_icon} {key}"
+            callback = f"set:rule:{key}"
+            
+        keyboard.append([InlineKeyboardButton(btn_text, callback_data=callback)])
     
+    # Add Control Buttons
+    control_row = []
+    if is_delete_mode:
+        control_row.append(InlineKeyboardButton("✅ Done Deleting", callback_data="set:menu:subs_normal"))
+    else:
+        control_row.append(InlineKeyboardButton("➕ Add Rule", callback_data="set:rule:add_prompt"))
+        control_row.append(InlineKeyboardButton("🗑 Delete Mode", callback_data="set:menu:subs_delete"))
+    
+    keyboard.append(control_row)
     keyboard.append([InlineKeyboardButton("⬅️ Back", callback_data="set:menu:main")])
     
     reply_markup = InlineKeyboardMarkup(keyboard)
-    text = "<b>Toggle Individual Rules</b>\n<i>Changes are applied instantly.</i>"
+    if is_delete_mode:
+        text = "<b>Delete Rules</b>\nTap a rule to permanently remove it."
+    else:
+        text = "<b>Toggle Individual Rules</b>\n<i>Changes are applied instantly.</i>"
     
     if query:
         await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
@@ -702,19 +768,44 @@ async def handle_settings_callback(update: Update, context: ContextTypes.DEFAULT
     if data == "set:menu:subs":
         await substitutions_menu(update, context)
         return
+    if data == "set:menu:subs_delete":
+        context.user_data["delete_mode"] = True
+        await substitutions_menu(update, context)
+        return
+    if data == "set:menu:subs_normal":
+        context.user_data["delete_mode"] = False
+        await substitutions_menu(update, context)
+        return
     if data == "set:menu:main":
+        context.user_data["delete_mode"] = False
         # Remove old message and resend main settings to refresh
         await query.message.delete()
         await settings_command(update, context)
         return
 
-    # Format: set:section:key OR set:rule:key
+    # Format: set:section:key OR set:rule:key OR set:delrule:key
     parts = data.split(":")
     type_ = parts[1]
     key = parts[2]
 
     if type_ == "rule":
+        if key == "add_prompt":
+            context.user_data["awaiting_rule"] = True
+            await query.message.reply_text(
+                "➕ <b>Adding a new Rule</b>\n"
+                "Please send the rule in the following format:\n"
+                "<code>name = s@pattern@replacement@flags</code>\n\n"
+                "Example:\n<code>twitter = s@twitter.com@fxtwitter.com@i</code>",
+                parse_mode=ParseMode.HTML
+            )
+            return
+        
         if cfg.toggle_rule(key):
+            await substitutions_menu(update, context)
+        return
+
+    if type_ == "delrule":
+        if cfg.delete_rule(key):
             await substitutions_menu(update, context)
         return
 
