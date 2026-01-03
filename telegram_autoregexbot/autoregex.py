@@ -675,6 +675,27 @@ async def version_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(response, parse_mode=ParseMode.HTML)
 
 
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handles the /help command."""
+    if not check_access(update):
+        return
+
+    text = (
+        "📖 <b>AutoRegex Bot Help</b>\n\n"
+        "This bot automatically fixes social media links (Twitter, Instagram, TikTok, etc.) using regex rules.\n\n"
+        "<b>Commands:</b>\n"
+        "/start - Welcome message & initialization\n"
+        "/help - Show this help message\n"
+        "/settings - Configure bot behavior and rules\n"
+        "/remindme [time] (reason) - Set a reminder (e.g., <code>/remindme 2h (laundry)</code>)\n"
+        "/reminders - List your pending reminders in this chat\n"
+        "/remindersall - List all pending reminders in this chat\n"
+        "/version - Show version information\n\n"
+        "<b>Note:</b> Settings and rules can only be modified by admins or users in the Access Control list."
+    )
+    await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+
+
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles the /start command and initialization checks."""
     if not check_access(update):
@@ -1489,11 +1510,13 @@ async def post_init(application: Application):
     """Sets the bot commands for autocomplete and recovers pending reminders."""
     # 1. Autocomplete Commands
     commands = [
+        BotCommand("start", "Welcome message & initialization"),
+        BotCommand("help", "Show help message"),
         BotCommand("version", "Show bot version and commit hash"),
         BotCommand("remindme", "Set a reminder. Usage: /remindme 2h (reason)"),
         BotCommand("reminders", "See your pending reminders in this chat"),
         BotCommand("remindersall", "See all pending reminders in this chat"),
-        BotCommand("settings", "Configure bot settings (Whitelisted only)"),
+        BotCommand("settings", "Configure bot settings"),
     ]
     await application.bot.set_my_commands(commands)
 
@@ -1592,6 +1615,7 @@ def main():
 
     # 3. Add Handlers
     application.add_handler(CommandHandler("start", start_command))
+    application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("version", version_command))
     application.add_handler(CommandHandler("remindme", remind_command))
     application.add_handler(CommandHandler("reminders", reminders_command))
