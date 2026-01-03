@@ -878,18 +878,20 @@ async def reminders_manage_menu(update: Update, context: ContextTypes.DEFAULT_TY
 async def handle_reminder_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles reminder management callbacks."""
     query = update.callback_query
-    await query.answer()
     
     data = query.data
     if data == "rem:close":
+        await query.answer("Menu closed.")
         await query.message.delete()
         return
     
     if data == "rem:manage":
+        await query.answer("Loading reminders...")
         await reminders_manage_menu(update, context)
         return
         
     if data.startswith("set:"): # Guard for safety if needed, but pattern handles it
+        await query.answer()
         return
 
     # rem:del:id
@@ -897,8 +899,11 @@ async def handle_reminder_callback(update: Update, context: ContextTypes.DEFAULT
     if len(parts) == 3 and parts[1] == "del":
         reminder_id = int(parts[2])
         db.delete_reminder(reminder_id)
+        await query.answer("🗑 Reminder deleted!")
         # Refresh the menu
         await reminders_manage_menu(update, context)
+    else:
+        await query.answer()
 
 
 async def reminders_all_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1092,47 +1097,43 @@ async def substitutions_menu(update: Update, context: ContextTypes.DEFAULT_TYPE)
 async def handle_settings_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles settings button clicks."""
     query = update.callback_query
-    await query.answer()
-
+    
     data = query.data
     if data == "set:close":
+        await query.answer("Menu closed.")
         await query.message.delete()
         return
 
     if not data.startswith("set:"):
+        await query.answer()
         return
 
     # Sub-menu navigation
     if data == "set:menu:subs":
+        await query.answer("Loading rules...")
         await substitutions_menu(update, context)
         return
-    if data == "set:action:backup":
-        if os.path.exists(cfg.config_file):
-            with open(cfg.config_file, "rb") as f:
-                await query.message.reply_document(
-                    document=f,
-                    filename="autoregexbot.cfg",
-                    caption="📂 <b>Bot Configuration Backup</b>",
-                    parse_mode=ParseMode.HTML
-                )
-        else:
-            await query.answer("❌ Local config file not found.", show_alert=True)
-        return
-    if data == "set:action:restore_prompt":
-        context.user_data["awaiting_config"] = True
-        await query.message.reply_text(
-            "📥 <b>Restoring Configuration</b>\n"
-            "Please upload your <code>.cfg</code> file now to overwrite the current settings.",
-            parse_mode=ParseMode.HTML
-        )
-        return
     if data == "set:menu:reset_confirm":
+        await query.answer("Warning: Reset requested.")
         await reset_confirmation_menu(update, context)
         return
+    if data == "set:action:reset_do":
+        if cfg.reset_to_defaults():
+            await query.answer("✅ Settings reset to defaults!", show_alert=True)
+            await query.edit_message_text("✅ <b>Configuration has been reset to defaults.</b>", parse_mode=ParseMode.HTML)
+            # Send fresh settings after a short delay
+            await asyncio.sleep(2)
+            await settings_command(update, context)
+            await query.message.delete()
+        else:
+            await query.answer("❌ Failed to reset configuration.", show_alert=True)
+        return
     if data == "set:menu:restart_confirm":
+        await query.answer("Restart requested.")
         await restart_confirmation_menu(update, context)
         return
     if data == "set:action:restart_do":
+        await query.answer("🔄 Restarting bot...", show_alert=True)
         await query.edit_message_text("🔄 <b>Restarting...</b> The bot will be back online in a few seconds.", parse_mode=ParseMode.HTML)
         logger.info(f"Restart initiated by user {update.effective_user.id}")
         
@@ -1142,25 +1143,18 @@ async def handle_settings_callback(update: Update, context: ContextTypes.DEFAULT
         # Small delay to allow the message to be sent before shutdown
         await asyncio.sleep(1)
         sys.exit(0)
-    if data == "set:action:reset_do":
-        if cfg.reset_to_defaults():
-            await query.edit_message_text("✅ <b>Configuration has been reset to defaults.</b>", parse_mode=ParseMode.HTML)
-            # Send fresh settings after a short delay
-            await asyncio.sleep(2)
-            await settings_command(update, context)
-            await query.message.delete()
-        else:
-            await query.answer("❌ Failed to reset configuration.", show_alert=True)
-        return
     if data == "set:menu:subs_delete":
+        await query.answer("Delete mode enabled.")
         context.user_data["delete_mode"] = True
         await substitutions_menu(update, context)
         return
     if data == "set:menu:subs_normal":
+        await query.answer("Delete mode disabled.")
         context.user_data["delete_mode"] = False
         await substitutions_menu(update, context)
         return
     if data == "set:menu:main":
+        await query.answer("Back to main settings.")
         context.user_data["delete_mode"] = False
         await settings_command(update, context)
         return
@@ -1172,6 +1166,7 @@ async def handle_settings_callback(update: Update, context: ContextTypes.DEFAULT
 
     if type_ == "rule":
         if key == "add_prompt":
+            await query.answer("Please send the new rule.")
             context.user_data["awaiting_rule"] = True
             await query.message.reply_text(
                 "➕ <b>Adding a new Rule</b>\n"
@@ -1183,11 +1178,14 @@ async def handle_settings_callback(update: Update, context: ContextTypes.DEFAULT
             return
         
         if cfg.toggle_rule(key):
+            is_enabled = key not in cfg.disabled_rules
+            await query.answer(f"Rule '{key}' {'enabled' if is_enabled else 'disabled'}")
             await substitutions_menu(update, context)
         return
 
     if type_ == "delrule":
         if cfg.delete_rule(key):
+            await query.answer(f"✅ Rule '{key}' deleted!")
             await substitutions_menu(update, context)
         return
 
@@ -1197,8 +1195,11 @@ async def handle_settings_callback(update: Update, context: ContextTypes.DEFAULT
     if isinstance(current_val, bool):
         new_val = not current_val
         if cfg.set_and_save(section, key, new_val):
+            await query.answer(f"{key.replace('_', ' ').capitalize()} set to {'ON' if new_val else 'OFF'}")
             # Refresh UI in place
             await settings_command(update, context)
+    else:
+        await query.answer()
 
 
 async def post_init(application: Application):
