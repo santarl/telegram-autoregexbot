@@ -29,5 +29,7 @@ WORKDIR /app
 # Set VERSION as env
 ARG VERSION
 ENV VERSION=${VERSION}
+ARG BOT_VERSION
+ENV BOT_VERSION=${BOT_VERSION}
 
 ENTRYPOINT ["/.venv/bin/python3", "-m", "telegram_autoregexbot.autoregex"]

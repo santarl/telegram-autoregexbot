@@ -370,10 +370,13 @@ async def version_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not check_access(update):
         return
 
-    try:
-        pkg_version = metadata.version("telegram-autoregexbot")
-    except metadata.PackageNotFoundError:
-        pkg_version = "Unknown"
+    # Try ENV first (for CalVer), then metadata, then default to Unknown
+    pkg_version = os.environ.get("BOT_VERSION")
+    if not pkg_version:
+        try:
+            pkg_version = metadata.version("telegram-autoregexbot")
+        except metadata.PackageNotFoundError:
+            pkg_version = "Unknown"
 
     commit_sha = os.environ.get("VERSION", "Unknown")
 

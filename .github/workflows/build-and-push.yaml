@@ -34,12 +34,18 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - name: Generate CalVer
+        id: calver
+        run: echo "date=$(date -u +'%y.%m.%d')" >> $GITHUB_OUTPUT
+
       - name: Build and Push Docker Image for ${{ matrix.name }}
         uses: docker/build-push-action@v6
         with:
           push: true
           platforms: linux/amd64,linux/arm64
-          build-args: VERSION=${{ github.sha }}
+          build-args: |
+            VERSION=${{ github.sha }}
+            BOT_VERSION=v${{ steps.calver.outputs.date }}
           tags: |
             ghcr.io/santarl/telegram-autoregexbot:latest
             ghcr.io/santarl/telegram-autoregexbot:${{ github.sha }}
