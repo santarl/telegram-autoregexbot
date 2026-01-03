@@ -686,7 +686,7 @@ async def remind_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     confirm_text = (
         "✅⏰\n"
-        f"I'll remind you at <code>{iso_time_utc}</code> (UTC)\n"
+        f"I'll try to remind you at <code>{iso_time_utc}</code> (UTC)\n"
         f"Local time (IST): <code>{ist_str}</code>\n"
         f"T-minus: <code>{t_minus}</code>"
     )
