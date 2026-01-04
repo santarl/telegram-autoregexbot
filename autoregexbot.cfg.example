@@ -58,7 +58,7 @@ fix_twitter = s@https?://(?:www\.)?(?:twitter|x)\.com/([^ \n]+)@https://fxtwitte
 
 # 3. TikTok -> vxtiktok
 # Embeds the actual video file instead of a link preview
-fix_tiktok = s@https?://(?:www\.|vm\.|vt\.)?tiktok\.com/([^ \n]+)@https://a.tnktok.com/\1@i
+#fix_tiktok = s@https?://(?:www\.|vm\.|vt\.)?tiktok\.com/([^ \n]+)@https://a.tnktok.com/\1@i
 
 # 4. Reddit -> rxddit
 # Embeds images, videos, and post text from Reddit
@@ -118,7 +118,7 @@ fix_music = s@https?://(?:open\.spotify\.com|music\.apple\.com)/([^ \n\?]+)(?:\?
 # --- TRACKING REMOVAL ---
 # Removes common tracking parameters (utm, si, igsh, etc.)
 # Note: These run after the specific site fixes.
-strip_trackers = s@([?&])(?:utm_[^=&]+|si|igsh|fbclid|gclid|ref_[^=&]+|_s|_t|_r|s|t|sender_device|sender_web_id|is_from_webapp|is_copy_url|share_item_id|social_sharing|original_referer)=[^&\s]*@@gi
-cleanup_query_1 = s@\?&@?@g
-cleanup_query_2 = s@&&@&@g
-cleanup_query_3 = s@(?:[?&])$@@g
+#strip_trackers = s@([?&])(?:utm_[^=&]+|si|igsh|fbclid|gclid|ref_[^=&]+|_s|_t|_r|s|t|sender_device|sender_web_id|is_from_webapp|is_copy_url|share_item_id|social_sharing|original_referer)=[^&\s]*@@gi
+#cleanup_query_1 = s@\?&@?@g
+#cleanup_query_2 = s@&&@&@g
+#cleanup_query_3 = s@(?:[?&])$@@g
