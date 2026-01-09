@@ -22,7 +22,6 @@ FROM gcr.io/distroless/python3-debian12
 # Copy venv and source code
 COPY --from=build /.venv /.venv
 COPY telegram_autoregexbot /app/telegram_autoregexbot
-COPY autoregexbot.cfg* /app/
 
 WORKDIR /app
 
