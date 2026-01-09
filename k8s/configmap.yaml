@@ -1,0 +1,130 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: autoregexbot-config
+data:
+  autoregexbot.cfg: |
+    [bot]
+    # General bot options
+    # If true, the bot replies to the original message. If false, it sends a standalone message.
+    send_as_reply = true
+    # If true, mentions the original user in the bot's response.
+    mention_user = false
+    # Cooldown in seconds per user to prevent spam
+    cooldown_seconds = 2
+
+    # Whether to include a link to the original message in reminders if it was a reply
+    remind_include_link = true
+
+    # If false (default), the bot extracts URLs, runs regex on them, and sends only the modified URLs.
+    # If true, the bot runs regex on the entire message text and sends the result.
+    process_whole_message = false
+
+    # Delete button configuration
+    enable_delete_button = false
+    # Permissions: sender, admin, sender_or_admin, nobody
+    delete_allowed = sender_or_admin
+
+    [access]
+    # Access policy: off, whitelist, blacklist
+    access_policy = off
+
+    # Chat types to allow processing for: private, group, supergroup, channel
+    # Leave empty to allow all, or specify comma-separated list
+    allow_chat_types = private,group,supergroup
+    deny_chat_types =
+
+    # Comma-separated list of Chat IDs (Integers)
+    whitelist_chats =
+    blacklist_chats =
+
+    # Comma-separated list of User IDs (Integers)
+    whitelist_users =
+    blacklist_users =
+    access_control_users =
+
+    # If true, group admins can click a button in settings to add themselves to access_control_users.
+    allow_admin_claim_access = true
+
+    [substitutions]
+    # ----------------------------------------------------------------------------
+    # Format: s@pattern@replacement@flags
+    # Delimiter: @ (At symbol) - avoids conflicts with regex | and url /
+    # ----------------------------------------------------------------------------
+
+    # --- MAINSTREAM SOCIAL MEDIA ---
+
+    # 1. Twitter / X -> fxtwitter
+    # Fixes video/image embeds and polls
+    fix_twitter = s@https?://(?:www\.)?(?:twitter|x)\.com/([^ \n]+)@https://fxtwitter.com/\1@i
+
+    # 2. Instagram -> ddinstagram
+    # Fixes Reels, Stories, and Post embeds
+    #fix_instagram = s@https?://(?:www\.)?instagram\.com/([^ \n]+)@https://zzinstagram.com/\1@i
+
+    # 3. TikTok -> vxtiktok
+    # Embeds the actual video file instead of a link preview
+    #fix_tiktok = s@https?://(?:www\.|vm\.|vt\.)?tiktok\.com/([^ \n]+)@https://a.tnktok.com/\1@i
+
+    # 4. Reddit -> rxddit
+    # Embeds images, videos, and post text from Reddit
+    fix_reddit = s@https?://(?:www\.|old\.)?reddit\.com/([^ \n]+)@https://rxddit.com/\1@i
+
+    # 5. Facebook -> facebookez (More reliable than fxfacebook)
+    # Fixes Reel and Post embeds
+    fix_facebook = s@https?://(?:www\.|m\.)?facebook\.com/([^ \n]+)@https://facebookez.com/\1@i
+
+    # --- ART & CREATIVE PLATFORMS ---
+
+    # 6. Pixiv -> phixiv
+    # Embeds full resolution artwork (including R-18 if supported)
+    fix_pixiv = s@https?://(?:www\.)?pixiv\.net/([^ \n]+)@https://phixiv.net/\1@i
+
+    # 7. DeviantArt -> fxdeviantart
+    # Fixes full-res previews
+    fix_deviantart = s@https?://(?:www\.)?deviantart\.com/([^ \n]+)@https://fxdeviantart.com/\1@i
+
+    # 8. ArtStation -> fxartstation
+    fix_artstation = s@https?://(?:www\.)?artstation\.com/artwork/([^ \n]+)@https://fxartstation.com/artwork/\1@i
+
+    # 9. FurAffinity -> xfuraffinity
+    # Fixes embeds for FA posts
+    fix_furaffinity = s@https?://(?:www\.)?furaffinity\.net/view/([^ \n]+)@https://xfuraffinity.net/view/\1@i
+
+    # --- OTHER PLATFORMS ---
+
+    # 10. Threads -> fixthreads
+    fix_threads = s@https?://(?:www\.)?threads\.net/([^ \n]+)@https://fixthreads.net/\1@i
+
+    # 11. Bluesky -> fxbsky
+    fix_bluesky = s@https?://(?:www\.)?bsky\.app/([^ \n]+)@https://fxbsky.app/\1@i
+
+    # 12. Tumblr -> tpmblr (fxtumblr)
+    # Fixes broken Tumblr photo/video embeds
+    fix_tumblr = s@https?://(?:www\.)?tumblr\.com/([^ \n]+)@https://tpmblr.com/\1@i
+
+    # 13. Twitch Clips -> fxtwitch
+    # Allows playing clips directly in Telegram
+    fix_twitch = s@https?://(?:clips\.|www\.)?twitch\.tv/([^ \n]+)@https://fxtwitch.seria.moe/\1@i
+
+    # --- UTILITY FIXES ---
+
+    # 14. YouTube Shorts -> Watch URL
+    # Converts Shorts to normal video player (allows seeking/PiP)
+    fix_ytshorts = s@https?://(?:www\.)?youtube\.com/shorts/([^ \n\?]+)@https://www.youtube.com/watch?v=\1@i
+
+    # 15. Wikipedia Mobile -> Desktop
+    # Forces desktop view for readability
+    fix_wikimobile = s@https?://([a-z]{2,3})\.m\.wikipedia\.org/([^ \n]+)@https://\1.wikipedia.org/\2@i
+
+    # 16. Spotify/AppleMusic -> Song.link
+    # Converts a specific music link to a universal "Odesli" page sharing all platforms
+    fix_music = s@https?://(?:open\.spotify\.com|music\.apple\.com)/([^ \n\?]+)(?:\?[^ \n]*)?@https://song.link/\1@i
+
+    # --- TRACKING REMOVAL ---
+    # Removes common tracking parameters (utm, si, igsh, etc.)
+    # Note: These run after the specific site fixes.
+    #strip_trackers = s@([?&])(?:utm_[^=&]+|si|igsh|fbclid|gclid|ref_[^=&]+|_s|_t|_r|s|t|sender_device|sender_web_id|is_from_webapp|is_copy_url|share_item_id|social_sharing|original_referer)=[^&\s]*@@gi
+    #cleanup_query_1 = s@\?&@?@g
+    #cleanup_query_2 = s@&&@&@g
+    #cleanup_query_3 = s@(?:[?&])$@@g

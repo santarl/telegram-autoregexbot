@@ -23,3 +23,12 @@ spec:
                 secretKeyRef:
                   name: autoregex-telegram-bot-token
                   key: TOKEN
+          volumeMounts:
+            - name: autoregexbot-config-volume
+              mountPath: /app/autoregexbot.cfg
+              subPath: autoregexbot.cfg
+
+      volumes:
+        - name: autoregexbot-config-volume
+          configMap:
+            name: autoregexbot-config
