@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
         - name: bot
-          image: ghcr.io/santarl/telegram-autoregexbot:a44293ec75cac30bb96bd88c3e8001447f5cef4c
+          image: ghcr.io/santarl/telegram-autoregexbot:56bd997a2fa94b141a694e422972abf396d4a38c
           env:
             - name: BOT_TOKEN
               valueFrom:
@@ -27,7 +27,6 @@ spec:
             - name: autoregexbot-config-volume
               mountPath: /app/autoregexbot.cfg
               subPath: autoregexbot.cfg
-
       volumes:
         - name: autoregexbot-config-volume
           configMap:
