@@ -62,7 +62,7 @@ fix_twitter = s@https?://(?:www\.)?(?:twitter|x)\.com/([^ \n]+)@https://fxtwitte
 
 # 4. Reddit -> rxddit
 # Embeds images, videos, and post text from Reddit
-fix_reddit = s@https?://(?:www\.|old\.)?reddit\.com/([^ \n]+)@https://rxddit.com/\1@i
+#fix_reddit = s@https?://(?:www\.|old\.)?reddit\.com/([^ \n]+)@https://rxddit.com/\1@i
 
 # 5. Facebook -> facebookez (More reliable than fxfacebook)
 # Fixes Reel and Post embeds
@@ -105,15 +105,15 @@ fix_twitch = s@https?://(?:clips\.|www\.)?twitch\.tv/([^ \n]+)@https://fxtwitch.
 
 # 14. YouTube Shorts -> Watch URL
 # Converts Shorts to normal video player (allows seeking/PiP)
-fix_ytshorts = s@https?://(?:www\.)?youtube\.com/shorts/([^ \n\?]+)@https://www.youtube.com/watch?v=\1@i
+#fix_ytshorts = s@https?://(?:www\.)?youtube\.com/shorts/([^ \n\?]+)@https://www.youtube.com/watch?v=\1@i
 
 # 15. Wikipedia Mobile -> Desktop
 # Forces desktop view for readability
-fix_wikimobile = s@https?://([a-z]{2,3})\.m\.wikipedia\.org/([^ \n]+)@https://\1.wikipedia.org/\2@i
+#fix_wikimobile = s@https?://([a-z]{2,3})\.m\.wikipedia\.org/([^ \n]+)@https://\1.wikipedia.org/\2@i
 
 # 16. Spotify/AppleMusic -> Song.link
 # Converts a specific music link to a universal "Odesli" page sharing all platforms
-fix_music = s@https?://(?:open\.spotify\.com|music\.apple\.com)/([^ \n\?]+)(?:\?[^ \n]*)?@https://song.link/\1@i
+#fix_music = s@https?://(?:open\.spotify\.com|music\.apple\.com)/([^ \n\?]+)(?:\?[^ \n]*)?@https://song.link/\1@i
 
 # --- TRACKING REMOVAL ---
 # Removes common tracking parameters (utm, si, igsh, etc.)
