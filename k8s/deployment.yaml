@@ -27,6 +27,13 @@ spec:
             - name: autoregexbot-config-volume
               mountPath: /app/autoregexbot.cfg
               subPath: autoregexbot.cfg
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 100m
+              memory: 256Mi
       volumes:
         - name: autoregexbot-config-volume
           configMap:
