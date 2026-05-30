@@ -6,14 +6,16 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [{name = "santarl"}]
-dependencies = ["python-telegram-bot>=21.0"]
+dependencies = [
+    "python-telegram-bot>=22.7",
+]
 
 [project.scripts]
 telegram-autoregexbot = "telegram_autoregexbot:main"
 
 [dependency-groups]
 dev = [
-    "nox>=2025.11.12",
-    "pyrefly>=0.46.1",
-    "ruff>=0.14.10",
+    "nox>=2026.4.10",
+    "pyrefly>=1.0.0",
+    "ruff>=0.15.15",
 ]
